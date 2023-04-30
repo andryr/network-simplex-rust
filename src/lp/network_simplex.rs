@@ -2,16 +2,17 @@
 Network simplex algorithm, inspired by networkx library implementation (https://networkx.org/documentation/stable/_modules/networkx/algorithms/flow/networksimplex.html)
 */
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::repeat;
 use std::usize;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Node {
     supply: f64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Edge {
     start: usize,
     end: usize,
@@ -19,14 +20,14 @@ struct Edge {
     cost: f64,
 }
 
-#[derive(Clone)]
-pub struct Graph<T: Eq + Hash> {
+#[derive(Clone, Debug)]
+pub struct Graph<T: Eq + Hash + Debug> {
     nodes: Vec<Node>,
     node_label_to_index: HashMap<T, usize>,
     edges: Vec<Edge>,
 }
 
-impl<T: Eq + Hash> Graph<T> {
+impl<T: Eq + Hash + Debug> Graph<T> {
     pub fn new() -> Graph<T> {
         Graph {
             nodes: vec![],
@@ -69,7 +70,8 @@ impl<T: Eq + Hash> Graph<T> {
     }
 }
 
-struct Solution<'a, T: Eq + Hash> {
+#[derive(Debug)]
+struct Solution<'a, T: Eq + Hash + Debug> {
     graph: &'a Graph<T>,
     edge_count: usize,
     potentials: Vec<f64>,
@@ -118,7 +120,7 @@ impl Iterator for SubtreeIterator<'_> {
     }
 }
 
-impl<T: Eq + Hash> Solution<'_, T> {
+impl<T: Eq + Hash + Debug> Solution<'_, T> {
     fn new(graph: &mut Graph<T>, eps: f64) -> Solution<T> {
         let n = graph.nodes.len();
         let m = graph.edges.len();
@@ -129,27 +131,28 @@ impl<T: Eq + Hash> Solution<'_, T> {
         let faux_inf = 3.0 * supplies.iter().chain(vec![cost_sum, capacity_sum].iter()).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
         // Add artificial root and edges
         for (i, u) in graph.nodes.iter().enumerate() {
-            if u.supply < eps {
-                graph.edges.push(Edge {
+            let edge = if u.supply < -eps {
+                Edge {
                     start: n,
                     end: i,
                     capacity: faux_inf,
                     cost: faux_inf,
-                })
+                }
             } else {
-                graph.edges.push(Edge {
+                Edge {
                     start: i,
                     end: n,
                     capacity: faux_inf,
                     cost: faux_inf,
-                })
-            }
+                }
+            };
+            graph.edges.push(edge);
         }
         let bfs = Solution {
             graph,
             edge_count: m,
             potentials: graph.nodes.iter().map(|node| {
-                if node.supply >= -eps {
+                if node.supply >= 0.0 {
                     faux_inf
                 } else {
                     -faux_inf
@@ -432,7 +435,7 @@ fn argmin<S: Copy>(edges: Vec<S>, func: impl Fn(S) -> f64) -> Option<S> {
     argmin
 }
 
-pub fn network_simplex<T: Eq + Hash + Clone>(graph: Graph<T>, eps: f64) -> Vec<f64> {
+pub fn network_simplex<T: Eq + Hash + Clone + Debug>(graph: Graph<T>, eps: f64) -> Vec<f64> {
     let mut graph = graph.clone();
     let mut solution = Solution::new(&mut graph, eps);
 
