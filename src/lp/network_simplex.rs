@@ -21,15 +21,21 @@ struct Edge {
 }
 
 #[derive(Clone, Debug)]
-pub struct Graph<T: Eq + Hash + Debug> {
+pub struct Graph {
+    nodes: Vec<Node>,
+    edges: Vec<Edge>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GraphBuilder<T: Eq + Hash + Debug> {
     nodes: Vec<Node>,
     node_label_to_index: HashMap<T, usize>,
     edges: Vec<Edge>,
 }
 
-impl<T: Eq + Hash + Debug> Graph<T> {
-    pub fn new() -> Graph<T> {
-        Graph {
+impl<T: Eq + Hash + Debug> GraphBuilder<T> {
+    pub fn new() -> GraphBuilder<T> {
+        GraphBuilder {
             nodes: vec![],
             node_label_to_index: HashMap::new(),
             edges: vec![],
@@ -68,11 +74,42 @@ impl<T: Eq + Hash + Debug> Graph<T> {
             }
         }
     }
+
+    fn build(&self) -> Graph {
+        Graph {
+            nodes: self.nodes.clone(),
+            edges: self.edges.clone()
+        }
+    }
+}
+
+impl Graph {
+    pub fn new() -> Graph {
+        Graph {
+            nodes: vec![],
+            edges: vec![],
+        }
+    }
+
+    pub fn add_node(&mut self, supply: f64) {
+        self.nodes.push(Node {
+            supply
+        });
+    }
+
+    pub fn add_edge(&mut self, u: usize, v: usize, capacity: f64, cost: f64) {
+        self.edges.push(Edge {
+            start: u,
+            end: v,
+            capacity,
+            cost,
+        });
+    }
 }
 
 #[derive(Debug)]
-struct Solution<'a, T: Eq + Hash + Debug> {
-    graph: &'a Graph<T>,
+struct Solution<'a> {
+    graph: &'a Graph,
     edge_count: usize,
     potentials: Vec<f64>,
     next_node_dft: Vec<usize>,
@@ -83,6 +120,7 @@ struct Solution<'a, T: Eq + Hash + Debug> {
     subtree_sizes: Vec<usize>,
     flow: Vec<f64>,
     eps: f64,
+    block_start: usize,
 }
 
 struct SubtreeIterator<'a> {
@@ -120,8 +158,8 @@ impl Iterator for SubtreeIterator<'_> {
     }
 }
 
-impl<T: Eq + Hash + Debug> Solution<'_, T> {
-    fn new(graph: &mut Graph<T>, eps: f64) -> Solution<T> {
+impl Solution<'_> {
+    fn new(graph: &mut Graph, eps: f64) -> Solution {
         let n = graph.nodes.len();
         let m = graph.edges.len();
 
@@ -166,6 +204,7 @@ impl<T: Eq + Hash + Debug> Solution<'_, T> {
             subtree_sizes: repeat(1).take(n).chain(vec![n + 1].iter().copied()).collect(),
             flow: repeat(0.0).take(m).chain(graph.nodes.iter().map(|node| { node.supply.abs() })).collect(),
             eps,
+            block_start: 0,
         };
         bfs
     }
@@ -359,23 +398,17 @@ impl<T: Eq + Hash + Debug> Solution<'_, T> {
         }
     }
 
-    fn find_entering_edge(&self) -> Option<(usize, usize, usize)> {
-        if self.edge_count == 0 {
-            return None;
-        }
-        let block_size = (self.edge_count as f64).sqrt().ceil() as usize;
-        let num_blocks = (self.edge_count + block_size - 1) / block_size;
+    fn find_entering_edge(&mut self, block_size: usize, num_blocks: usize) -> Option<(usize, usize, usize)> {
         let mut m = 0;
-        let mut f = 0;
         while m < num_blocks {
-            let mut l = f + block_size;
-            let edges: Vec<usize> = if l <= self.edge_count {
-                (f..l).collect()
+            let mut block_end = self.block_start + block_size;
+            let edges: Vec<usize> = if block_end <= self.edge_count {
+                (self.block_start..block_end).collect()
             } else {
-                l -= self.edge_count;
-                (f..self.edge_count).chain(0..l).collect()
+                block_end -= self.edge_count;
+                (self.block_start..self.edge_count).chain(0..block_end).collect()
             };
-            f = l;
+            self.block_start = block_end;
 
             let i = argmin(edges, |i| self.reduced_cost(i)).unwrap();
             let c = self.reduced_cost(i);
@@ -435,12 +468,14 @@ fn argmin<S: Copy>(edges: Vec<S>, func: impl Fn(S) -> f64) -> Option<S> {
     argmin
 }
 
-pub fn network_simplex<T: Eq + Hash + Clone + Debug>(graph: Graph<T>, eps: f64) -> Vec<f64> {
+pub fn network_simplex(graph: Graph, eps: f64) -> Vec<f64> {
     let mut graph = graph.clone();
     let mut solution = Solution::new(&mut graph, eps);
 
     // Pivot loop
-    let mut next = solution.find_entering_edge();
+    let block_size = (solution.edge_count as f64).sqrt().ceil() as usize;
+    let num_blocks = (solution.edge_count + block_size - 1) / block_size;
+    let mut next = solution.find_entering_edge(block_size, num_blocks);
     while next.is_some() {
         let (i, mut u, mut v) = next.unwrap();
 
@@ -463,7 +498,7 @@ pub fn network_simplex<T: Eq + Hash + Clone + Debug>(graph: Graph<T>, eps: f64) 
             solution.add_edge(i, u, v);
             solution.update_potentials(i, u, v);
         }
-        next = solution.find_entering_edge();
+        next = solution.find_entering_edge(block_size, num_blocks);
     }
     solution.flow.drain(solution.edge_count..solution.flow.len());
     solution.flow
@@ -473,24 +508,24 @@ pub fn network_simplex<T: Eq + Hash + Clone + Debug>(graph: Graph<T>, eps: f64) 
 mod tests {
     use ndarray_rand::rand;
     use ndarray_rand::rand::random;
-    use crate::lp::network_simplex::{Graph, network_simplex};
+    use crate::lp::network_simplex::{Graph, GraphBuilder, network_simplex};
 
     #[test]
     fn test_ns() {
-        let mut graph = Graph::new();
+        let mut graph = GraphBuilder::new();
         graph.add_node(String::from("a"), 5.0);
         graph.add_node(String::from("d"), -5.0);
         graph.add_edge(String::from("a"), String::from("b"), 4.0, 3.0);
         graph.add_edge(String::from("a"), String::from("c"), 10.0, 6.0);
         graph.add_edge(String::from("b"), String::from("d"), 9.0, 1.0);
         graph.add_edge(String::from("c"), String::from("d"), 5.0, 2.0);
-        let flow = super::network_simplex(graph, 10e-12);
+        let flow = super::network_simplex(graph.build(), 10e-12);
         assert_eq!(vec![4.0, 1.0, 4.0, 1.0], flow);
     }
 
     #[test]
     fn test_ns2() {
-        let mut graph = Graph::new();
+        let mut graph = GraphBuilder::new();
         graph.add_node(String::from("p"), 4.0);
         graph.add_node(String::from("q"), -2.0);
         graph.add_node(String::from("a"), 2.0);
@@ -504,7 +539,7 @@ mod tests {
         graph.add_edge(String::from("a"), String::from("t"), 4.0, 2.0);
         graph.add_edge(String::from("d"), String::from("w"), 4.0, 3.0);
         graph.add_edge(String::from("t"), String::from("w"), 1.0, 4.0);
-        let flow = super::network_simplex(graph, 10e-12);
+        let flow = super::network_simplex(graph.build(), 10e-12);
         assert_eq!(vec![2.0, 2.0, 1.0, 1.0, 4.0, 2.0, 1.0], flow);
     }
 }
