@@ -4,15 +4,15 @@ use ndarray::prelude::*;
 use crate::lp::network_simplex::{Graph, network_simplex};
 
 pub fn solve(u: &Array1<f64>, v: &Array1<f64>, cost_matrix: &Array2<f64>, eps: f64) -> Array2<f64> {
-    let mut graph: Graph<usize> = Graph::new();
+    let mut graph: Graph = Graph::new();
     let m = u.len();
     let n = v.len();
 
     for i in 0..m {
-        graph.add_node(i, u[i]);
+        graph.add_node(u[i]);
     }
     for j in 0..n {
-        graph.add_node(m + j, -v[j]);
+        graph.add_node(-v[j]);
     }
 
     for i in 0..m {
@@ -21,7 +21,7 @@ pub fn solve(u: &Array1<f64>, v: &Array1<f64>, cost_matrix: &Array2<f64>, eps: f
         }
     }
 
-    let flow = Array1::from_vec(network_simplex(graph, eps));
+    let flow = Array1::from_vec(network_simplex(&graph, eps));
 
     let mut result: Array2<f64> = Array::zeros((m, n));
 

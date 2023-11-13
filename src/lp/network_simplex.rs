@@ -1,5 +1,5 @@
 /*
-Network simplex algorithm, inspired by networkx library implementation (https://networkx.org/documentation/stable/_modules/networkx/algorithms/flow/networksimplex.html)
+Network simplex algorithm, adapted from networkx library implementation (https://networkx.org/documentation/stable/_modules/networkx/algorithms/flow/networksimplex.html)
 */
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -78,7 +78,7 @@ impl<T: Eq + Hash + Debug> GraphBuilder<T> {
     fn build(&self) -> Graph {
         Graph {
             nodes: self.nodes.clone(),
-            edges: self.edges.clone()
+            edges: self.edges.clone(),
         }
     }
 }
@@ -275,7 +275,7 @@ impl Solution<'_> {
         }
     }
 
-    fn trace_subtree(&self, u: usize) -> SubtreeIterator {
+    fn trace_subtree(&mut self, u: usize) -> SubtreeIterator {
         SubtreeIterator::init(u, &self.next_node_dft, &self.last_descendent_dft)
     }
 
@@ -383,9 +383,14 @@ impl Solution<'_> {
         } else {
             self.potentials[p] + self.graph.edges[i].cost - self.potentials[q]
         };
-        let subtree: Vec<usize> = self.trace_subtree(q).collect();
-        for q in subtree {
-            self.potentials[q] += d;
+        let last = self.last_descendent_dft[q];
+        let mut u = q;
+        loop {
+            self.potentials[u] += d;
+            if u == last {
+                break;
+            }
+            u = self.next_node_dft[u];
         }
     }
 
@@ -402,11 +407,12 @@ impl Solution<'_> {
         let mut m = 0;
         while m < num_blocks {
             let mut block_end = self.block_start + block_size;
-            let edges: Vec<usize> = if block_end <= self.edge_count {
-                (self.block_start..block_end).collect()
+
+            let edges = if block_end <= self.edge_count {
+                Box::new(self.block_start..block_end) as Box<dyn Iterator<Item=usize>>
             } else {
                 block_end -= self.edge_count;
-                (self.block_start..self.edge_count).chain(0..block_end).collect()
+                Box::new((self.block_start..self.edge_count).chain(0..block_end)) as Box<dyn Iterator<Item=usize>>
             };
             self.block_start = block_end;
 
@@ -439,23 +445,23 @@ impl Solution<'_> {
     }
 
     fn find_leaving_edge(&self, nodes: &Vec<usize>, edges: &Vec<usize>) -> (usize, usize, usize) {
-        let nodes_rev: Vec<usize> = nodes.iter().copied().rev().collect();
-        let edges_rev: Vec<usize> = edges.iter().copied().rev().collect();
+        let nodes_rev = nodes.iter().rev();
+        let edges_rev = edges.iter().rev();
 
-        let ind: Vec<(usize, usize)> = edges_rev.iter().copied().zip(nodes_rev.iter().copied()).collect();
+        let ind = edges_rev.zip(nodes_rev);
         let (j, s) = argmin(ind,
-                            |(t, u)| self.residual_capacity(t, u)).unwrap();
+                            |(t, u)| self.residual_capacity(*t, *u)).unwrap();
 
-        let t = if self.graph.edges[j].start == s {
-            self.graph.edges[j].end
+        let t = if self.graph.edges[*j].start == *s {
+            self.graph.edges[*j].end
         } else {
-            self.graph.edges[j].start
+            self.graph.edges[*j].start
         };
-        (j, s, t)
+        (*j, *s, t)
     }
 }
 
-fn argmin<S: Copy>(edges: Vec<S>, func: impl Fn(S) -> f64) -> Option<S> {
+fn argmin<S: Copy>(edges: impl Iterator<Item=S>, func: impl Fn(S) -> f64) -> Option<S> {
     let mut argmin: Option<S> = None;
     let mut min = f64::INFINITY;
     for i in edges {
@@ -468,7 +474,7 @@ fn argmin<S: Copy>(edges: Vec<S>, func: impl Fn(S) -> f64) -> Option<S> {
     argmin
 }
 
-pub fn network_simplex(graph: Graph, eps: f64) -> Vec<f64> {
+pub fn network_simplex(graph: &Graph, eps: f64) -> Vec<f64> {
     let mut graph = graph.clone();
     let mut solution = Solution::new(&mut graph, eps);
 
@@ -508,6 +514,7 @@ pub fn network_simplex(graph: Graph, eps: f64) -> Vec<f64> {
 mod tests {
     use ndarray_rand::rand;
     use ndarray_rand::rand::random;
+
     use crate::lp::network_simplex::{Graph, GraphBuilder, network_simplex};
 
     #[test]
@@ -519,7 +526,7 @@ mod tests {
         graph.add_edge(String::from("a"), String::from("c"), 10.0, 6.0);
         graph.add_edge(String::from("b"), String::from("d"), 9.0, 1.0);
         graph.add_edge(String::from("c"), String::from("d"), 5.0, 2.0);
-        let flow = super::network_simplex(graph.build(), 10e-12);
+        let flow = super::network_simplex(&graph.build(), 10e-12);
         assert_eq!(vec![4.0, 1.0, 4.0, 1.0], flow);
     }
 
@@ -539,7 +546,7 @@ mod tests {
         graph.add_edge(String::from("a"), String::from("t"), 4.0, 2.0);
         graph.add_edge(String::from("d"), String::from("w"), 4.0, 3.0);
         graph.add_edge(String::from("t"), String::from("w"), 1.0, 4.0);
-        let flow = super::network_simplex(graph.build(), 10e-12);
+        let flow = super::network_simplex(&graph.build(), 10e-12);
         assert_eq!(vec![2.0, 2.0, 1.0, 1.0, 4.0, 2.0, 1.0], flow);
     }
 }
