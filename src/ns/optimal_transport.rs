@@ -1,9 +1,8 @@
-mod network_simplex;
-
 use ndarray::prelude::*;
-use crate::lp::network_simplex::{Graph, network_simplex};
+use crate::graph::Graph;
+use crate::ns::network_simplex::solve_min_cost_flow;
 
-pub fn solve(u: &Array1<f64>, v: &Array1<f64>, cost_matrix: &Array2<f64>, eps: f64) -> Array2<f64> {
+pub fn solve_ot(u: &Array1<f64>, v: &Array1<f64>, cost_matrix: &Array2<f64>, eps: f64) -> Array2<f64> {
     let mut graph: Graph = Graph::new();
     let m = u.len();
     let n = v.len();
@@ -21,7 +20,7 @@ pub fn solve(u: &Array1<f64>, v: &Array1<f64>, cost_matrix: &Array2<f64>, eps: f
         }
     }
 
-    let flow = Array1::from_vec(network_simplex(&graph, eps));
+    let flow = Array1::from_vec(solve_min_cost_flow(&graph, eps));
 
     let mut result: Array2<f64> = Array::zeros((m, n));
 
@@ -41,7 +40,7 @@ mod tests {
     use ndarray_rand::rand::SeedableRng;
     use ndarray_rand::rand_distr::Normal;
     use rand_isaac::isaac64::Isaac64Rng;
-    use crate::lp::solve;
+    use crate::ns::optimal_transport::solve_ot;
 
     #[test]
     fn test_solve() {
@@ -55,7 +54,7 @@ mod tests {
 
         let u: Array1<f64> = Array1::ones(n) / (n as f64);
 
-        let result = solve(&u, &u, &cost_matrix, 1e-8);
+        let result = solve_ot(&u, &u, &cost_matrix, 1e-8);
 
 
 
@@ -63,4 +62,3 @@ mod tests {
         assert_abs_diff_eq!(result.sum_axis(Axis(1)), u);
     }
 }
-

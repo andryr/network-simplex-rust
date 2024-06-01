@@ -1,111 +1,11 @@
 /*
 Network simplex algorithm, adapted from networkx library implementation (https://networkx.org/documentation/stable/_modules/networkx/algorithms/flow/networksimplex.html)
 */
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::repeat;
 use std::usize;
-
-#[derive(Clone, Debug)]
-struct Node {
-    supply: f64,
-}
-
-#[derive(Clone, Debug)]
-struct Edge {
-    start: usize,
-    end: usize,
-    capacity: f64,
-    cost: f64,
-}
-
-#[derive(Clone, Debug)]
-pub struct Graph {
-    nodes: Vec<Node>,
-    edges: Vec<Edge>,
-}
-
-#[derive(Clone, Debug)]
-pub struct GraphBuilder<T: Eq + Hash + Debug> {
-    nodes: Vec<Node>,
-    node_label_to_index: HashMap<T, usize>,
-    edges: Vec<Edge>,
-}
-
-impl<T: Eq + Hash + Debug> GraphBuilder<T> {
-    pub fn new() -> GraphBuilder<T> {
-        GraphBuilder {
-            nodes: vec![],
-            node_label_to_index: HashMap::new(),
-            edges: vec![],
-        }
-    }
-
-    pub fn add_node(&mut self, label: T, supply: f64) {
-        self.nodes.push(Node {
-            supply
-        });
-        self.node_label_to_index.insert(label, self.nodes.len() - 1);
-    }
-
-    pub fn add_edge(&mut self, label_u: T, label_v: T, capacity: f64, cost: f64) {
-        let u = self.get_node_or_create(label_u);
-        let v = self.get_node_or_create(label_v);
-        self.edges.push(Edge {
-            start: u,
-            end: v,
-            capacity,
-            cost,
-        });
-    }
-
-    fn get_node_or_create(&mut self, label: T) -> usize {
-        match self.node_label_to_index.get(&label) {
-            Some(u) => {
-                *u
-            }
-            None => {
-                self.nodes.push(Node {
-                    supply: 0.0
-                });
-                self.node_label_to_index.insert(label, self.nodes.len() - 1);
-                self.nodes.len() - 1
-            }
-        }
-    }
-
-    fn build(&self) -> Graph {
-        Graph {
-            nodes: self.nodes.clone(),
-            edges: self.edges.clone(),
-        }
-    }
-}
-
-impl Graph {
-    pub fn new() -> Graph {
-        Graph {
-            nodes: vec![],
-            edges: vec![],
-        }
-    }
-
-    pub fn add_node(&mut self, supply: f64) {
-        self.nodes.push(Node {
-            supply
-        });
-    }
-
-    pub fn add_edge(&mut self, u: usize, v: usize, capacity: f64, cost: f64) {
-        self.edges.push(Edge {
-            start: u,
-            end: v,
-            capacity,
-            cost,
-        });
-    }
-}
+use crate::graph::{Edge, Graph};
 
 #[derive(Debug)]
 struct Solution<'a> {
@@ -474,7 +374,7 @@ fn argmin<S: Copy>(edges: impl Iterator<Item=S>, func: impl Fn(S) -> f64) -> Opt
     argmin
 }
 
-pub fn network_simplex(graph: &Graph, eps: f64) -> Vec<f64> {
+pub fn solve_min_cost_flow(graph: &Graph, eps: f64) -> Vec<f64> {
     let mut graph = graph.clone();
     let mut solution = Solution::new(&mut graph, eps);
 
@@ -512,10 +412,7 @@ pub fn network_simplex(graph: &Graph, eps: f64) -> Vec<f64> {
 
 #[cfg(test)]
 mod tests {
-    use ndarray_rand::rand;
-    use ndarray_rand::rand::random;
-
-    use crate::lp::network_simplex::{Graph, GraphBuilder, network_simplex};
+    use crate::graph::GraphBuilder;
 
     #[test]
     fn test_ns() {
@@ -526,7 +423,7 @@ mod tests {
         graph.add_edge(String::from("a"), String::from("c"), 10.0, 6.0);
         graph.add_edge(String::from("b"), String::from("d"), 9.0, 1.0);
         graph.add_edge(String::from("c"), String::from("d"), 5.0, 2.0);
-        let flow = super::network_simplex(&graph.build(), 10e-12);
+        let flow = super::solve_min_cost_flow(&graph.build(), 10e-12);
         assert_eq!(vec![4.0, 1.0, 4.0, 1.0], flow);
     }
 
@@ -546,7 +443,7 @@ mod tests {
         graph.add_edge(String::from("a"), String::from("t"), 4.0, 2.0);
         graph.add_edge(String::from("d"), String::from("w"), 4.0, 3.0);
         graph.add_edge(String::from("t"), String::from("w"), 1.0, 4.0);
-        let flow = super::network_simplex(&graph.build(), 10e-12);
+        let flow = super::solve_min_cost_flow(&graph.build(), 10e-12);
         assert_eq!(vec![2.0, 2.0, 1.0, 1.0, 4.0, 2.0, 1.0], flow);
     }
 }
