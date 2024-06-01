@@ -1,5 +1,5 @@
 [package]
-aname = "network-simplex"
+name = "network-simplex"
 version = "0.1.0"
 edition = "2021"
 
